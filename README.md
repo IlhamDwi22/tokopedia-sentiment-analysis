@@ -17,10 +17,11 @@ Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla
 ```text
 tokopedia-sentiment-analysis/
 ├── .gitignore
+├── .vercelignore
 ├── README.md
 ├── main.py
-├── render.yaml
 ├── requirements.txt
+├── vercel.json
 ├── notebooks/
 │   ├── 01_data_scraping.ipynb
 │   └── 02_model_training_and_evaluation.ipynb
@@ -30,6 +31,7 @@ tokopedia-sentiment-analysis/
 │   ├── model_bilstm.onnx
 │   ├── model_logreg.joblib
 │   ├── model_svm.joblib
+│   ├── stopwords_id.json
 │   ├── tfidf_vectorizer.joblib
 │   ├── tokenizer_config.json
 │   └── unified_lexicon.joblib
@@ -80,7 +82,7 @@ Dokumentasi Swagger UI otomatis tersedia di `/docs` saat server berjalan.
 ## Prasyarat & Instalasi Lokal
 
 - Python 3.12 atau lebih baru
-- Koneksi internet (hanya saat pertama kali mengunduh stopwords NLTK dan saat menjalankan fitur Live Play Store Scraper)
+- Koneksi internet (hanya saat menjalankan fitur Live Play Store Scraper)
 
 ```bash
 cd tokopedia-sentiment-analysis

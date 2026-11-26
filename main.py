@@ -1,15 +1,15 @@
-"""FastAPI monolith server serving REST API endpoints and static SPA assets."""
+"""FastAPI monolith server serving REST API endpoints and static SPA assets (Vercel & Uvicorn ready)."""
 
 import base64
 from contextlib import asynccontextmanager
+import csv
 import io
 import logging
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from src.config import MAX_BATCH_ROWS, STATIC_DIR, SUPPORTED_MODELS
@@ -25,11 +25,17 @@ logger = logging.getLogger(__name__)
 engine = SentimentEngine()
 
 
+def _ensure_models_loaded() -> None:
+    """Lazy-load model artifacts if lifespan did not run yet (serverless safe)."""
+    if not engine.models_loaded:
+        engine.load_artifacts()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Load trained ML/DL artifacts once when the application starts."""
+    """Load trained ML/ONNX artifacts once when the application starts."""
     try:
-        engine.load_artifacts()
+        _ensure_models_loaded()
     except Exception as exc:
         logger.exception("Gagal memuat artefak model saat startup: %s", exc)
     yield
@@ -37,7 +43,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Tokopedia Play Store Sentiment Analysis API",
-    description="Full-Stack AI Sentiment Analysis (CNN+Bi-LSTM, SVM, Logistic Regression)",
+    description="Full-Stack AI Sentiment Analysis (CNN+Bi-LSTM ONNX, SVM, Logistic Regression)",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -77,21 +83,44 @@ def _compute_distribution(predictions: List[Dict[str, Any]]) -> Dict[str, int]:
     return dist
 
 
-def _read_csv_bytes(raw_bytes: bytes) -> pd.DataFrame:
-    """Decode uploaded CSV bytes with UTF-8 / UTF-8-SIG / Latin-1 fallback."""
+def _read_csv_bytes(raw_bytes: bytes) -> Tuple[List[str], List[Dict[str, str]]]:
+    """Decode uploaded CSV bytes with UTF-8-SIG / UTF-8 / Latin-1 fallback using stdlib csv."""
+    decoded_text = None
     for encoding in ("utf-8-sig", "utf-8", "latin-1"):
         try:
-            return pd.read_csv(io.BytesIO(raw_bytes), encoding=encoding)
+            decoded_text = raw_bytes.decode(encoding)
+            break
         except UnicodeDecodeError:
             continue
-        except Exception as exc:
+
+    if decoded_text is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Gagal membaca encoding file CSV. Pastikan file berformat UTF-8.",
+        )
+
+    try:
+        reader = csv.DictReader(io.StringIO(decoded_text))
+        if not reader.fieldnames:
             raise HTTPException(
-                status_code=400, detail=f"File CSV tidak valid atau rusak: {exc}"
-            ) from exc
-    raise HTTPException(
-        status_code=400,
-        detail="Gagal membaca encoding file CSV. Pastikan file berformat UTF-8.",
-    )
+                status_code=400, detail="File CSV tidak memiliki header kolom."
+            )
+        fieldnames = [str(f).strip() for f in reader.fieldnames if f is not None]
+        rows: List[Dict[str, str]] = []
+        for raw_row in reader:
+            cleaned_row = {
+                str(k).strip(): ("" if v is None else str(v))
+                for k, v in raw_row.items()
+                if k is not None
+            }
+            rows.append(cleaned_row)
+        return fieldnames, rows
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"File CSV tidak valid atau rusak: {exc}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +138,10 @@ async def serve_index() -> FileResponse:
 @app.get("/api/health")
 async def health_check() -> Dict[str, Any]:
     """Return server health status and loaded model list."""
+    try:
+        _ensure_models_loaded()
+    except Exception as exc:
+        logger.exception("Health check gagal memuat model: %s", exc)
     return {
         "status": "ok" if engine.models_loaded else "degraded",
         "models_loaded": engine.models_loaded,
@@ -118,11 +151,13 @@ async def health_check() -> Dict[str, Any]:
 @app.post("/api/predict")
 async def predict_single(payload: PredictRequest) -> Dict[str, Any]:
     """Run sentiment inference on a single review text."""
-    if not engine.models_loaded:
+    try:
+        _ensure_models_loaded()
+    except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail="Model belum dimuat di server. Pastikan folder artifacts/ sudah tersedia.",
-        )
+            detail=f"Model gagal dimuat di server: {exc}",
+        ) from exc
 
     cleaned_input = payload.text.strip()
     if not cleaned_input:
@@ -144,11 +179,13 @@ async def predict_batch_csv(
     model_type: str = Form("bilstm"),
 ) -> Dict[str, Any]:
     """Run batch sentiment inference on an uploaded CSV file (max 2,000 rows)."""
-    if not engine.models_loaded:
+    try:
+        _ensure_models_loaded()
+    except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail="Model belum dimuat di server. Pastikan folder artifacts/ sudah tersedia.",
-        )
+            detail=f"Model gagal dimuat di server: {exc}",
+        ) from exc
 
     filename = (file.filename or "").lower()
     if not filename.endswith(".csv"):
@@ -167,35 +204,43 @@ async def predict_batch_csv(
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="File CSV yang diunggah kosong.")
 
-    df = _read_csv_bytes(raw_bytes)
-    if df.empty:
+    fieldnames, rows = _read_csv_bytes(raw_bytes)
+    if not rows:
         raise HTTPException(status_code=400, detail="File CSV tidak memiliki baris data.")
 
-    # Resolve target text column (with helpful fallback from 'content' -> 'review')
+    # Resolve target text column (with fallback from 'content' -> 'review')
     col_name = (text_column or "content").strip()
-    if col_name not in df.columns:
-        if col_name == "content" and "review" in df.columns:
+    if col_name not in fieldnames:
+        if col_name == "content" and "review" in fieldnames:
             col_name = "review"
         else:
-            available = ", ".join(map(str, df.columns.tolist()[:10]))
+            available = ", ".join(fieldnames[:10])
             raise HTTPException(
                 status_code=400,
                 detail=f"Kolom '{col_name}' tidak ditemukan di CSV. Kolom tersedia: {available}",
             )
 
-    truncated = False
-    if len(df) > MAX_BATCH_ROWS:
-        df = df.head(MAX_BATCH_ROWS).copy()
-        truncated = True
-    else:
-        df = df.copy()
+    truncated = len(rows) > MAX_BATCH_ROWS
+    if truncated:
+        rows = rows[:MAX_BATCH_ROWS]
 
-    texts = df[col_name].fillna("").astype(str).tolist()
+    texts = [row.get(col_name, "") for row in rows]
     predictions = engine.predict_batch(texts, model_type=normalized_model)
 
-    df["clean_text"] = [p["clean_text"] for p in predictions]
-    df["predicted_sentiment"] = [p["sentiment"] for p in predictions]
-    df["confidence"] = [p["confidence"] for p in predictions]
+    out_fields = list(fieldnames)
+    for extra in ("clean_text", "predicted_sentiment", "confidence"):
+        if extra not in out_fields:
+            out_fields.append(extra)
+
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=out_fields)
+    writer.writeheader()
+    for row, pred in zip(rows, predictions):
+        out_row = dict(row)
+        out_row["clean_text"] = pred["clean_text"]
+        out_row["predicted_sentiment"] = pred["sentiment"]
+        out_row["confidence"] = pred["confidence"]
+        writer.writerow(out_row)
 
     distribution = _compute_distribution(predictions)
     preview = [
@@ -208,12 +253,10 @@ async def predict_batch_csv(
         for p in predictions[:10]
     ]
 
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False, encoding="utf-8")
     csv_base64 = base64.b64encode(csv_buffer.getvalue().encode("utf-8")).decode("ascii")
 
     return {
-        "total_rows": len(df),
+        "total_rows": len(rows),
         "truncated": truncated,
         "text_column_used": col_name,
         "model_used": normalized_model,
@@ -226,11 +269,13 @@ async def predict_batch_csv(
 @app.post("/api/scrape-analyze")
 async def scrape_and_analyze(payload: ScrapeAnalyzeRequest) -> Dict[str, Any]:
     """Scrape live reviews from Google Play Store and run sentiment + keyword analysis."""
-    if not engine.models_loaded:
+    try:
+        _ensure_models_loaded()
+    except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail="Model belum dimuat di server. Pastikan folder artifacts/ sudah tersedia.",
-        )
+            detail=f"Model gagal dimuat di server: {exc}",
+        ) from exc
 
     try:
         scraped_reviews = scrape_playstore_reviews(
@@ -267,7 +312,6 @@ async def scrape_and_analyze(payload: ScrapeAnalyzeRequest) -> Dict[str, Any]:
     distribution = _compute_distribution(predictions)
     top_keywords = extract_top_keywords(combined_reviews, top_n=10)
 
-    # Strip clean_text from response reviews payload to keep JSON concise per PRD
     public_reviews = [
         {
             "userName": r["userName"],

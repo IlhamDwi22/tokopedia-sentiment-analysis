@@ -25,6 +25,7 @@ ARTIFACT_PATHS: Dict[str, Path] = {
     "tokenizer": ARTIFACTS_DIR / "tokenizer_config.json",
     "label_encoder": ARTIFACTS_DIR / "label_encoder.joblib",
     "unified_lexicon": ARTIFACTS_DIR / "unified_lexicon.joblib",
+    "stopwords": ARTIFACTS_DIR / "stopwords_id.json",
 }
 
 # Emoji-to-sentiment-word mapping (applied before removing non-ASCII characters)

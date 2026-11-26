@@ -1,14 +1,18 @@
 """NLP text cleaning, emoji conversion, slang normalization, and stopword removal."""
 
 from functools import lru_cache
+import json
 import re
 import string
 from typing import Set
 
-import nltk
-from nltk.corpus import stopwords
-
-from src.config import EMOJI_DICT, ENGLISH_STOPWORDS, IMPORTANT_WORDS, SLANG_DICT
+from src.config import (
+    ARTIFACT_PATHS,
+    EMOJI_DICT,
+    ENGLISH_STOPWORDS,
+    IMPORTANT_WORDS,
+    SLANG_DICT,
+)
 
 _URL_PATTERN = re.compile(r"http\S+|www\S+|https\S+")
 _MENTION_HASHTAG_PATTERN = re.compile(r"@\w+|#\w+")
@@ -20,13 +24,9 @@ _PUNCT_TRANS = str.maketrans("", "", string.punctuation)
 
 @lru_cache(maxsize=1)
 def get_stopwords() -> Set[str]:
-    """Load Indonesian stopwords merged with basic English stopwords, retaining negation words."""
-    try:
-        indo_stopwords = set(stopwords.words("indonesian"))
-    except LookupError:
-        nltk.download("stopwords", quiet=True)
-        indo_stopwords = set(stopwords.words("indonesian"))
-
+    """Load bundled Indonesian stopwords merged with basic English stopwords, retaining negation words."""
+    stopwords_path = ARTIFACT_PATHS["stopwords"]
+    indo_stopwords = set(json.loads(stopwords_path.read_text(encoding="utf-8")))
     combined = indo_stopwords | ENGLISH_STOPWORDS
     return combined - IMPORTANT_WORDS
 
