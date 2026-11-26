@@ -1,16 +1,17 @@
-"""Model artifact loader and multi-model sentiment inference router."""
+"""Model artifact loader and multi-model sentiment inference router (ONNX Runtime + Scikit-Learn)."""
 
+import json
 import logging
 from typing import Any, Dict, List, Optional, Sequence
 
 import joblib
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+import onnxruntime as ort
 
 from src.config import (
     ARTIFACT_PATHS,
     MAX_LEN,
+    MAX_WORDS,
     NEUTRAL_FALLBACK_CONFIDENCE,
     SUPPORTED_MODELS,
 )
@@ -29,22 +30,48 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
     return exp_vals / np.sum(exp_vals, axis=-1, keepdims=True)
 
 
+def _texts_to_padded_sequences(
+    texts: Sequence[str], tokenizer_cfg: Dict[str, Any]
+) -> np.ndarray:
+    """Convert cleaned texts into padded INT64 token ID sequences without Keras."""
+    word_index: Dict[str, int] = tokenizer_cfg["word_index"]
+    num_words: int = int(tokenizer_cfg.get("num_words", MAX_WORDS))
+    oov_token: str = str(tokenizer_cfg.get("oov_token", "<OOV>"))
+    oov_idx: int = int(word_index.get(oov_token, 1))
+    max_len: int = int(tokenizer_cfg.get("max_len", MAX_LEN))
+
+    sequences = np.zeros((len(texts), max_len), dtype=np.int64)
+    for row_idx, text in enumerate(texts):
+        pos = 0
+        for token in str(text).lower().split():
+            if pos >= max_len:
+                break
+            idx = word_index.get(token)
+            if idx is None or idx >= num_words:
+                idx = oov_idx
+            sequences[row_idx, pos] = idx
+            pos += 1
+    return sequences
+
+
 class SentimentEngine:
     """Loads all trained NLP artifacts and routes single or batch sentiment inference."""
 
     def __init__(self) -> None:
-        self.model_bilstm: Optional[tf.keras.Model] = None
+        self.bilstm_session: Optional[ort.InferenceSession] = None
+        self.bilstm_input_name: str = "input_ids"
+        self.bilstm_output_name: str = "probabilities"
+        self.tokenizer_cfg: Dict[str, Any] = {}
         self.model_svm: Any = None
         self.model_logreg: Any = None
         self.tfidf: Any = None
         self.bow: Any = None
-        self.tokenizer: Any = None
         self.label_encoder: Any = None
         self.unified_lexicon: Dict[str, int] = {}
         self.models_loaded: List[str] = []
 
     def load_artifacts(self) -> None:
-        """Load models, vectorizers, tokenizer, label encoder, and lexicon into memory."""
+        """Load ONNX Bi-LSTM, Scikit-Learn models, tokenizer JSON, encoder, and lexicon."""
         # Warm up NLTK stopwords cache at startup
         get_stopwords()
 
@@ -65,11 +92,20 @@ class SentimentEngine:
 
         loaded: List[str] = []
 
-        logger.info("Loading CNN + Bi-LSTM model and Keras tokenizer...")
-        self.model_bilstm = tf.keras.models.load_model(
-            ARTIFACT_PATHS["bilstm"], compile=False
+        logger.info("Loading CNN + Bi-LSTM ONNX session and JSON tokenizer...")
+        sess_opts = ort.SessionOptions()
+        sess_opts.intra_op_num_threads = 2
+        sess_opts.inter_op_num_threads = 1
+        self.bilstm_session = ort.InferenceSession(
+            str(ARTIFACT_PATHS["bilstm"]),
+            sess_options=sess_opts,
+            providers=["CPUExecutionProvider"],
         )
-        self.tokenizer = joblib.load(ARTIFACT_PATHS["tokenizer"])
+        self.bilstm_input_name = self.bilstm_session.get_inputs()[0].name
+        self.bilstm_output_name = self.bilstm_session.get_outputs()[0].name
+        self.tokenizer_cfg = json.loads(
+            ARTIFACT_PATHS["tokenizer"].read_text(encoding="utf-8")
+        )
         loaded.append("bilstm")
 
         logger.info("Loading SVM (LinearSVC) model and TF-IDF vectorizer...")
@@ -101,14 +137,15 @@ class SentimentEngine:
             return False
         return any(word in self.unified_lexicon for word in clean_text.split())
 
-    def _predict_probabilities(self, clean_texts: Sequence[str], model_type: str) -> np.ndarray:
+    def _predict_probabilities(
+        self, clean_texts: Sequence[str], model_type: str
+    ) -> np.ndarray:
         """Compute class probability matrix of shape (N, num_classes) for the chosen model."""
         if model_type == "bilstm":
-            sequences = self.tokenizer.texts_to_sequences(clean_texts)
-            padded = pad_sequences(
-                sequences, maxlen=MAX_LEN, padding="post", truncating="post"
-            )
-            probs = self.model_bilstm.predict(padded, verbose=0)
+            padded = _texts_to_padded_sequences(clean_texts, self.tokenizer_cfg)
+            probs = self.bilstm_session.run(
+                [self.bilstm_output_name], {self.bilstm_input_name: padded}
+            )[0]
             return np.asarray(probs, dtype=np.float64)
 
         if model_type == "svm":
@@ -181,7 +218,9 @@ class SentimentEngine:
             pred_labels = self.label_encoder.inverse_transform(pred_indices)
 
             for row_pos, orig_idx in enumerate(active_indices):
-                conf = round(float(prob_matrix[row_pos, pred_indices[row_pos]] * 100.0), 2)
+                conf = round(
+                    float(prob_matrix[row_pos, pred_indices[row_pos]] * 100.0), 2
+                )
                 results[orig_idx]["sentiment"] = str(pred_labels[row_pos])
                 results[orig_idx]["confidence"] = conf
 

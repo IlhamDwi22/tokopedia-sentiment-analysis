@@ -27,3 +27,4 @@ Thumbs.db
 # Temporary Data
 *.tmp
 *.log
+nltk_data/

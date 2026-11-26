@@ -3,8 +3,8 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
-# Machine Learning & Deep Learning
-tensorflow>=2.16.0
+# Lightweight ML & ONNX Deep Learning Runtime (Free-Tier 512 MB RAM Safe)
+onnxruntime>=1.19.0
 scikit-learn>=1.5.0
 joblib>=1.4.0
 

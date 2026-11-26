@@ -1,13 +1,3 @@
----
-title: Tokopedia Play Store Sentiment Analysis
-emoji: 📊
-colorFrom: green
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Tokopedia Play Store Sentiment Analysis
 
 Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla JavaScript** (tema Neo-Brutalism) untuk klasifikasi sentimen 3 kelas (`Positif`, `Netral`, `Negatif`) pada ulasan aplikasi Google Play Store berbahasa Indonesia.
@@ -15,7 +5,7 @@ Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla
 ## Fitur Utama
 
 1. **Global Model Switcher**: Beralih langsung di header antara 3 model terlatih:
-   - `bilstm`: Deep Learning (**CNN + Bi-LSTM** dengan Word Embedding, default)
+   - `bilstm`: Deep Learning (**CNN + Bi-LSTM** dengan Word Embedding, diekspor ke **ONNX Runtime** agar hemat memori di produksi, default)
    - `svm`: Machine Learning (**SVM LinearSVC + TF-IDF**) dengan konversi `decision_function` ke confidence score via Softmax
    - `logreg`: Machine Learning (**Logistic Regression + Bag of Words**)
 2. **Ulasan Tunggal (Live Single-Review)**: Pengujian teks ulasan secara langsung lengkap dengan contoh cepat (Positif, Negatif, Netral), stempel sentimen, confidence score, dan panel collapsible untuk melihat hasil `clean_text` dari pipeline NLP.
@@ -26,23 +16,22 @@ Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla
 
 ```text
 tokopedia-sentiment-analysis/
-├── Dockerfile
-├── .dockerignore
 ├── .gitignore
 ├── README.md
-├── requirements.txt
 ├── main.py
+├── render.yaml
+├── requirements.txt
 ├── notebooks/
 │   ├── 01_data_scraping.ipynb
 │   └── 02_model_training_and_evaluation.ipynb
 ├── artifacts/
 │   ├── bow_vectorizer.joblib
 │   ├── label_encoder.joblib
-│   ├── model_bilstm.keras
+│   ├── model_bilstm.onnx
 │   ├── model_logreg.joblib
 │   ├── model_svm.joblib
 │   ├── tfidf_vectorizer.joblib
-│   ├── tokenizer.joblib
+│   ├── tokenizer_config.json
 │   └── unified_lexicon.joblib
 ├── src/
 │   ├── __init__.py
@@ -72,7 +61,7 @@ Setiap ulasan diproses secara konsisten melalui `src/preprocessing.py`:
 
 | Skema | Algoritma | Ekstraksi Fitur | Split Data | Akurasi Training | Akurasi Testing |
 | :--- | :--- | :--- | :---: | :---: | :---: |
-| Skema 1 (Default) | **CNN + Bi-LSTM** | Word Embedding | 80 / 20 | 95.85% | **90.31%** |
+| Skema 1 (Default) | **CNN + Bi-LSTM (ONNX)** | Word Embedding | 80 / 20 | 95.85% | **90.31%** |
 | Skema 2 | **SVM (LinearSVC)** | TF-IDF | 80 / 20 | 98.25% | 86.60% |
 | Skema 3 | **Logistic Regression** | Bag of Words | 70 / 30 | 99.66% | 89.71% |
 
@@ -90,7 +79,7 @@ Dokumentasi Swagger UI otomatis tersedia di `/docs` saat server berjalan.
 
 ## Prasyarat & Instalasi Lokal
 
-- Python 3.10 atau lebih baru
+- Python 3.12 atau lebih baru
 - Koneksi internet (hanya saat pertama kali mengunduh stopwords NLTK dan saat menjalankan fitur Live Play Store Scraper)
 
 ```bash

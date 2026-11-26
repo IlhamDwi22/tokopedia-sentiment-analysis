@@ -17,12 +17,12 @@ SUPPORTED_MODELS: tuple[str, ...] = ("bilstm", "svm", "logreg")
 
 # Artifact file paths
 ARTIFACT_PATHS: Dict[str, Path] = {
-    "bilstm": ARTIFACTS_DIR / "model_bilstm.keras",
+    "bilstm": ARTIFACTS_DIR / "model_bilstm.onnx",
     "svm": ARTIFACTS_DIR / "model_svm.joblib",
     "logreg": ARTIFACTS_DIR / "model_logreg.joblib",
     "tfidf": ARTIFACTS_DIR / "tfidf_vectorizer.joblib",
     "bow": ARTIFACTS_DIR / "bow_vectorizer.joblib",
-    "tokenizer": ARTIFACTS_DIR / "tokenizer.joblib",
+    "tokenizer": ARTIFACTS_DIR / "tokenizer_config.json",
     "label_encoder": ARTIFACTS_DIR / "label_encoder.joblib",
     "unified_lexicon": ARTIFACTS_DIR / "unified_lexicon.joblib",
 }
