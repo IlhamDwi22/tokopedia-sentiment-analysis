@@ -1,0 +1,19 @@
+# Web Framework & ASGI Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Machine Learning & Deep Learning
+tensorflow>=2.16.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+
+# Data & NLP Preprocessing
+pandas>=2.2.0
+numpy>=1.26.0
+nltk>=3.8.0
+Sastrawi>=1.0.1
+requests>=2.31.0
+
+# Live Play Store Scraper
+google-play-scraper>=1.2.7

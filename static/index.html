@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PlayStore Sentiment Lab | Analisis Sentimen Ulasan Indonesia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">PS</span>
+        <div>
+          <h1 class="brand-title">PlayStore Sentiment Lab</h1>
+          <p class="brand-subtitle">Klasifikasi 3 kelas ulasan aplikasi Indonesia</p>
+        </div>
+      </div>
+
+      <div class="navbar-controls">
+        <div id="health-pill" class="health-box health-loading" title="Status Backend API">
+          <span class="status-square" aria-hidden="true"></span>
+          <span id="health-text">Memeriksa server...</span>
+        </div>
+
+        <div class="model-switcher">
+          <label for="model-selector" class="model-label">Model Aktif</label>
+          <select id="model-selector" class="select-input" aria-label="Pilih arsitektur model">
+            <option value="bilstm" selected>CNN + Bi-LSTM (Deep Learning)</option>
+            <option value="svm">SVM LinearSVC + TF-IDF</option>
+            <option value="logreg">Logistic Regression + BoW</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-content">
+    <!-- Tab Navigation -->
+    <nav class="tab-nav" role="tablist" aria-label="Mode Analisis">
+      <button
+        type="button"
+        class="tab-btn active"
+        role="tab"
+        aria-selected="true"
+        aria-controls="panel-single"
+        data-tab="single"
+      >
+        <span class="tab-index">01</span>
+        <span>Ulasan Tunggal</span>
+      </button>
+      <button
+        type="button"
+        class="tab-btn"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-batch"
+        data-tab="batch"
+      >
+        <span class="tab-index">02</span>
+        <span>Batch CSV</span>
+      </button>
+      <button
+        type="button"
+        class="tab-btn"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-scraper"
+        data-tab="scraper"
+      >
+        <span class="tab-index">03</span>
+        <span>Live Play Store Scraper</span>
+      </button>
+    </nav>
+
+    <!-- ================================================================ -->
+    <!-- TAB 1: LIVE SINGLE-REVIEW ANALYZER (Asymmetric 2-Column Split)   -->
+    <!-- ================================================================ -->
+    <section id="panel-single" class="tab-panel active" role="tabpanel">
+      <div class="single-grid">
+        <div class="panel panel-elevated">
+          <div class="panel-header">
+            <h2>Uji Ulasan Tunggal</h2>
+            <p class="muted">
+              Ketik teks ulasan pelanggan berbahasa Indonesia, termasuk kata slang dan emoji untuk menguji pipeline NLP.
+            </p>
+          </div>
+
+          <div class="preset-bar">
+            <span class="preset-label">Isi contoh:</span>
+            <button
+              type="button"
+              class="chip-btn chip-pos"
+              data-sample="Aplikasi Tokopedia sangat membantu belanja bulanan, pengiriman cepat dan gratis ongkir! 👍🔥"
+            >
+              Contoh Positif
+            </button>
+            <button
+              type="button"
+              class="chip-btn chip-neg"
+              data-sample="Parah banget aplikasinya sering eror dan lemot pas mau bayar, nyesel install 😡👎"
+            >
+              Contoh Negatif
+            </button>
+            <button
+              type="button"
+              class="chip-btn chip-neu"
+              data-sample="Saya membeli meja kayu ukuran sedang untuk ruang kerja kemarin."
+            >
+              Contoh Netral
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label for="single-text" class="field-label">Teks Ulasan</label>
+            <textarea
+              id="single-text"
+              class="textarea-input"
+              rows="5"
+              placeholder="Tulis atau tempel ulasan Google Play Store di sini..."
+            ></textarea>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-analyze-single" type="button" class="btn btn-primary">
+              Analisis Sentimen
+            </button>
+            <button id="btn-clear-single" type="button" class="btn btn-secondary">
+              Bersihkan
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Column: Empty / Loading / Error / Result States -->
+        <div class="panel panel-flat verdict-panel">
+          <div id="single-empty" class="state-box">
+            <p class="state-title">Belum ada hasil analisis</p>
+            <p class="state-desc">
+              Pilih salah satu tombol contoh atau ketik ulasan di kolom kiri, lalu tekan
+              <strong>Analisis Sentimen</strong> untuk melihat prediksi model.
+            </p>
+          </div>
+
+          <div id="single-loading" class="state-box hidden">
+            <p class="state-title">Menjalankan inferensi model...</p>
+            <p class="state-desc">Membersihkan teks, menormalisasi slang, dan menghitung probabilitas kelas.</p>
+          </div>
+
+          <div id="single-error" class="state-box state-error hidden" role="alert">
+            <p class="state-title">Analisis gagal dijalankan</p>
+            <p id="single-error-msg" class="state-desc"></p>
+          </div>
+
+          <div id="single-result" class="verdict-content hidden">
+            <div class="verdict-top">
+              <div>
+                <span class="meta-label">Hasil Prediksi</span>
+                <div class="stamp-row">
+                  <span id="single-badge" class="sentiment-stamp stamp-neutral">Netral</span>
+                  <span id="single-model-tag" class="mono-tag">bilstm</span>
+                </div>
+              </div>
+              <div class="confidence-readout">
+                <span class="meta-label">Confidence</span>
+                <strong id="single-confidence-text" class="confidence-value">0.00%</strong>
+              </div>
+            </div>
+
+            <div class="meter-track" aria-label="Skor keyakinan model">
+              <div id="single-confidence-bar" class="meter-fill" style="width: 0%"></div>
+            </div>
+
+            <details class="nlp-accordion" open>
+              <summary>
+                <span>Lihat Proses Preprocessing (NLP Pipeline)</span>
+                <span class="summary-toggle" aria-hidden="true">+/-</span>
+              </summary>
+              <div class="nlp-details-body">
+                <div class="nlp-box">
+                  <span class="meta-label">Teks Asli</span>
+                  <p id="single-original-text" class="nlp-text"></p>
+                </div>
+                <div class="nlp-box">
+                  <span class="meta-label">Clean Text (Hasil Normalisasi)</span>
+                  <p id="single-clean-text" class="nlp-text mono-text"></p>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- TAB 2: BATCH ANALYSIS VIA CSV UPLOAD                             -->
+    <!-- ================================================================ -->
+    <section id="panel-batch" class="tab-panel" role="tabpanel">
+      <div class="panel panel-elevated">
+        <div class="panel-header">
+          <h2>Analisis Massal via Upload CSV</h2>
+          <p class="muted">
+            Unggah file <code>.csv</code> berisi kumpulan ulasan (batas maksimal 2.000 baris per proses).
+          </p>
+        </div>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Unggah file CSV">
+          <input id="csv-file-input" type="file" accept=".csv,text/csv" hidden />
+          <p class="dropzone-title">Tarik dan lepas file CSV di sini, atau <span>klik untuk memilih file</span></p>
+          <p class="dropzone-hint">Hanya format .csv. Kolom teks default: <code>content</code> atau <code>review</code>.</p>
+        </div>
+
+        <div id="selected-file-bar" class="selected-file hidden">
+          <div class="selected-file-info">
+            <span class="mono-tag">CSV</span>
+            <span id="selected-file-name"></span>
+            <span id="selected-file-size" class="muted"></span>
+          </div>
+          <button id="btn-remove-file" type="button" class="btn btn-secondary btn-sm">
+            Ganti File
+          </button>
+        </div>
+
+        <div class="batch-controls">
+          <div class="form-group inline-field">
+            <label for="csv-column-input" class="field-label">Nama Kolom Teks</label>
+            <input
+              id="csv-column-input"
+              type="text"
+              class="text-input"
+              value="content"
+              placeholder="content"
+            />
+          </div>
+
+          <button id="btn-analyze-batch" type="button" class="btn btn-primary">
+            Proses File CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Batch Empty / Loading / Error States -->
+      <div id="batch-empty" class="panel panel-flat state-box">
+        <p class="state-title">Belum ada file CSV yang diproses</p>
+        <p class="state-desc">
+          Pilih file CSV pada area unggah di atas, pastikan nama kolom teks sesuai, lalu klik
+          <strong>Proses File CSV</strong> untuk melihat ringkasan sentimen dan mengunduh hasilnya.
+        </p>
+      </div>
+
+      <div id="batch-loading" class="panel panel-flat state-box hidden">
+        <p class="state-title">Memproses seluruh baris CSV...</p>
+        <p class="state-desc">Menjalankan pembersihan teks dan inferensi batch di server.</p>
+      </div>
+
+      <div id="batch-error" class="panel panel-flat state-box state-error hidden" role="alert">
+        <p class="state-title">Gagal memproses file CSV</p>
+        <p id="batch-error-msg" class="state-desc"></p>
+      </div>
+
+      <!-- Batch Results -->
+      <div id="batch-result" class="results-stack hidden">
+        <!-- Unified Breakdown Strip (replaces generic 4 identical stat cards) -->
+        <div class="panel panel-flat summary-strip">
+          <div class="summary-strip-header">
+            <div>
+              <span class="meta-label">Total Ulasan Diproses</span>
+              <strong id="batch-total" class="big-number">0</strong>
+              <span id="batch-meta" class="muted meta-inline"></span>
+            </div>
+            <button id="btn-download-csv" type="button" class="btn btn-primary">
+              Download Hasil Prediksi (.csv)
+            </button>
+          </div>
+
+          <div class="segmented-bar" aria-label="Proporsi sentimen">
+            <div id="batch-seg-pos" class="seg seg-pos" style="width: 0%"></div>
+            <div id="batch-seg-neu" class="seg seg-neu" style="width: 0%"></div>
+            <div id="batch-seg-neg" class="seg seg-neg" style="width: 0%"></div>
+          </div>
+
+          <div class="breakdown-row">
+            <div class="breakdown-item">
+              <span class="sentiment-stamp sm stamp-positive">Positif</span>
+              <strong id="batch-pos-pct">0%</strong>
+              <span id="batch-pos-count" class="muted">0 ulasan</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="sentiment-stamp sm stamp-neutral">Netral</span>
+              <strong id="batch-neu-pct">0%</strong>
+              <span id="batch-neu-count" class="muted">0 ulasan</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="sentiment-stamp sm stamp-negative">Negatif</span>
+              <strong id="batch-neg-pct">0%</strong>
+              <span id="batch-neg-count" class="muted">0 ulasan</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="batch-detail-grid">
+          <div class="panel panel-flat chart-panel">
+            <div class="panel-header-compact">
+              <h3>Bagaimana sebaran sentimen pada CSV ini?</h3>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="batch-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="panel panel-flat">
+            <div class="panel-header-compact">
+              <h3>Pratinjau 10 Baris Pertama</h3>
+              <p class="muted">Kolom sentimen dan confidence diletakkan di awal untuk pemindaian cepat.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Sentimen</th>
+                    <th>Confidence</th>
+                    <th>Ulasan Asli</th>
+                    <th>Clean Text</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-preview-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- TAB 3: LIVE ON-DEMAND PLAY STORE SCRAPER                         -->
+    <!-- ================================================================ -->
+    <section id="panel-scraper" class="tab-panel" role="tabpanel">
+      <div class="panel panel-elevated">
+        <div class="panel-header">
+          <h2>Live On-Demand Play Store Scraper</h2>
+          <p class="muted">
+            Tarik ulasan terbaru langsung dari Google Play Store Indonesia untuk memantau sentimen dan kata kunci dominan.
+          </p>
+        </div>
+
+        <div class="preset-bar">
+          <span class="preset-label">Isi cepat App ID:</span>
+          <button type="button" class="chip-btn" data-appid="com.tokopedia.tkpd">
+            Tokopedia
+          </button>
+          <button type="button" class="chip-btn" data-appid="com.gojek.app">
+            Gojek
+          </button>
+          <button type="button" class="chip-btn" data-appid="id.dana">
+            DANA
+          </button>
+        </div>
+
+        <div class="scraper-controls">
+          <div class="form-group flex-grow">
+            <label for="scraper-appid" class="field-label">App ID Google Play Store</label>
+            <input
+              id="scraper-appid"
+              type="text"
+              class="text-input mono-text"
+              value="com.tokopedia.tkpd"
+              placeholder="com.tokopedia.tkpd"
+            />
+          </div>
+
+          <div class="form-group count-field">
+            <label for="scraper-count" class="field-label">Jumlah Ulasan</label>
+            <select id="scraper-count" class="select-input">
+              <option value="25">25 ulasan terbaru</option>
+              <option value="50" selected>50 ulasan terbaru</option>
+              <option value="100">100 ulasan terbaru</option>
+            </select>
+          </div>
+
+          <button id="btn-scrape-live" type="button" class="btn btn-primary">
+            Tarik &amp; Analisis Live
+          </button>
+        </div>
+      </div>
+
+      <!-- Scraper Empty / Loading / Error States -->
+      <div id="scraper-empty" class="panel panel-flat state-box">
+        <p class="state-title">Siap menarik ulasan terbaru dari Play Store</p>
+        <p class="state-desc">
+          Masukkan App ID aplikasi (atau pilih pintasan Tokopedia, Gojek, DANA), tentukan jumlah ulasan, lalu klik
+          <strong>Tarik &amp; Analisis Live</strong>.
+        </p>
+      </div>
+
+      <div id="scraper-loading" class="panel panel-flat state-box hidden">
+        <p class="state-title">Menarik ulasan terbaru dari Google Play Store...</p>
+        <p class="state-desc">Mengambil data live dari Play Store Indonesia dan memprediksi sentimen tiap ulasan.</p>
+      </div>
+
+      <div id="scraper-error" class="panel panel-flat state-box state-error hidden" role="alert">
+        <p class="state-title">Gagal menarik ulasan Play Store</p>
+        <p id="scraper-error-msg" class="state-desc"></p>
+      </div>
+
+      <!-- Scraper Results (Sidebar Insights + Live Feed) -->
+      <div id="scraper-result" class="scraper-layout hidden">
+        <aside class="scraper-sidebar">
+          <div class="panel panel-flat">
+            <span class="meta-label">Ringkasan Penarikan</span>
+            <strong id="scraper-total" class="big-number">0</strong>
+            <p id="scraper-app-label" class="muted mono-text meta-small">-</p>
+
+            <div class="breakdown-stack">
+              <div class="breakdown-line">
+                <span class="sentiment-stamp sm stamp-positive">Positif</span>
+                <strong id="scraper-pos-pct">0%</strong>
+                <span id="scraper-pos-count" class="muted">0</span>
+              </div>
+              <div class="breakdown-line">
+                <span class="sentiment-stamp sm stamp-neutral">Netral</span>
+                <strong id="scraper-neu-pct">0%</strong>
+                <span id="scraper-neu-count" class="muted">0</span>
+              </div>
+              <div class="breakdown-line">
+                <span class="sentiment-stamp sm stamp-negative">Negatif</span>
+                <strong id="scraper-neg-pct">0%</strong>
+                <span id="scraper-neg-count" class="muted">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel panel-flat">
+            <div class="panel-header-compact">
+              <h3>Bagaimana sentimen ulasan terbaru ini?</h3>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="scraper-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="panel panel-flat">
+            <div class="panel-header-compact">
+              <h3>Kata Kunci Paling Sering Muncul</h3>
+            </div>
+            <div class="keywords-section">
+              <span class="meta-label">Pada Ulasan Positif</span>
+              <div id="kw-positive" class="kw-list"></div>
+            </div>
+            <div class="keywords-section">
+              <span class="meta-label">Pada Ulasan Negatif</span>
+              <div id="kw-negative" class="kw-list"></div>
+            </div>
+          </div>
+        </aside>
+
+        <div class="panel panel-flat feed-panel">
+          <div class="panel-header-compact">
+            <h3>Feed Ulasan Terbaru</h3>
+            <p class="muted">Menampilkan rating bintang asli Play Store berdampingan dengan prediksi model.</p>
+          </div>
+          <div id="scraper-feed" class="review-feed"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>PlayStore Sentiment Lab | FastAPI, TensorFlow, Scikit-Learn</span>
+      <span class="muted">Pipeline NLP 3 Kelas Bahasa Indonesia</span>
+    </div>
+  </footer>
+</body>
+</html>
