@@ -1,3 +1,13 @@
+---
+title: Tokopedia Play Store Sentiment Analysis
+emoji: 📊
+colorFrom: green
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Tokopedia Play Store Sentiment Analysis
 
 Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla JavaScript** (tema Neo-Brutalism) untuk klasifikasi sentimen 3 kelas (`Positif`, `Netral`, `Negatif`) pada ulasan aplikasi Google Play Store berbahasa Indonesia.

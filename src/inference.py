@@ -66,7 +66,9 @@ class SentimentEngine:
         loaded: List[str] = []
 
         logger.info("Loading CNN + Bi-LSTM model and Keras tokenizer...")
-        self.model_bilstm = tf.keras.models.load_model(ARTIFACT_PATHS["bilstm"])
+        self.model_bilstm = tf.keras.models.load_model(
+            ARTIFACT_PATHS["bilstm"], compile=False
+        )
         self.tokenizer = joblib.load(ARTIFACT_PATHS["tokenizer"])
         loaded.append("bilstm")
 
