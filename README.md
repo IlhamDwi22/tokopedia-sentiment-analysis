@@ -4,19 +4,24 @@ Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla
 
 ## Demo Aplikasi
 
+Link Demo: https://my-sentiment-analysis.vercel.app/
+
 ### 1. Ulasan Tunggal & Global Model Switcher
+
 Pengujian teks ulasan langsung dengan pergantian model (`CNN + Bi-LSTM` vs `SVM LinearSVC`) serta panel transparan hasil preprocessing (`clean_text`).
 
 ![Demo Ulasan Tunggal CNN + Bi-LSTM](assets/demo-02-single-review-bilstm.png)
 ![Demo Ulasan Tunggal SVM LinearSVC](assets/demo-01-single-review-svm.png)
 
 ### 2. Batch CSV Upload & Visualisasi Distribusi
+
 Unggah file `.csv` berukuran besar (otomatis dipangkas hingga 2.000 baris utuh di sisi browser), lengkap dengan bar proporsi sentimen, grafik Doughnut interaktif, tabel pratinjau 10 baris pertama, dan tombol unduh hasil `.csv`.
 
 ![Demo Upload Batch CSV](assets/demo-03-batch-csv-upload.png)
 ![Demo Hasil Batch CSV dan Tabel Pratinjau](assets/demo-04-batch-csv-results.png)
 
 ### 3. Live On-Demand Play Store Scraper
+
 Penarikan ulasan terbaru langsung dari Google Play Store Indonesia (contoh: `com.gojek.app`, 50 ulasan terbaru), lengkap dengan grafik sebaran sentimen, kata kunci dominan, dan feed ulasan live.
 
 ![Demo Live Play Store Scraper](assets/demo-05-live-scraper-input.png)
@@ -88,20 +93,20 @@ Setiap ulasan diproses secara konsisten melalui `src/preprocessing.py`:
 
 ### Ringkasan Evaluasi (12.272 Ulasan Bersih)
 
-| Skema | Algoritma | Ekstraksi Fitur | Split Data | Akurasi Training | Akurasi Testing |
-| :--- | :--- | :--- | :---: | :---: | :---: |
-| Skema 1 (Default) | **CNN + Bi-LSTM (ONNX)** | Word Embedding | 80 / 20 | 95.85% | **90.31%** |
-| Skema 2 | **SVM (LinearSVC)** | TF-IDF | 80 / 20 | 98.25% | 86.60% |
-| Skema 3 | **Logistic Regression** | Bag of Words | 70 / 30 | 99.66% | 89.71% |
+| Skema             | Algoritma                | Ekstraksi Fitur | Split Data | Akurasi Training | Akurasi Testing |
+| :---------------- | :----------------------- | :-------------- | :--------: | :--------------: | :-------------: |
+| Skema 1 (Default) | **CNN + Bi-LSTM (ONNX)** | Word Embedding  |  80 / 20   |      95.85%      |   **90.31%**    |
+| Skema 2           | **SVM (LinearSVC)**      | TF-IDF          |  80 / 20   |      98.25%      |     86.60%      |
+| Skema 3           | **Logistic Regression**  | Bag of Words    |  70 / 30   |      99.66%      |     89.71%      |
 
 ## Endpoint REST API
 
-| Method | Endpoint | Deskripsi |
-| :--- | :--- | :--- |
-| `GET` | `/` | Menyajikan antarmuka web (`static/index.html`) |
-| `GET` | `/api/health` | Status server dan daftar model yang dimuat di memori |
-| `POST` | `/api/predict` | Prediksi sentimen ulasan tunggal (`text`, `model_type`) |
-| `POST` | `/api/predict-batch` | Prediksi massal file `.csv` (`file`, `text_column`, `model_type`) |
+| Method | Endpoint              | Deskripsi                                                                              |
+| :----- | :-------------------- | :------------------------------------------------------------------------------------- |
+| `GET`  | `/`                   | Menyajikan antarmuka web (`static/index.html`)                                         |
+| `GET`  | `/api/health`         | Status server dan daftar model yang dimuat di memori                                   |
+| `POST` | `/api/predict`        | Prediksi sentimen ulasan tunggal (`text`, `model_type`)                                |
+| `POST` | `/api/predict-batch`  | Prediksi massal file `.csv` (`file`, `text_column`, `model_type`)                      |
 | `POST` | `/api/scrape-analyze` | Live scraping Play Store, prediksi, dan top keywords (`app_id`, `count`, `model_type`) |
 
 Dokumentasi Swagger UI otomatis tersedia di `/docs` saat server berjalan.
