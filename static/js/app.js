@@ -14,6 +14,83 @@ function getSelectedModel() {
   return $("#model-selector").value;
 }
 
+const MAX_UPLOAD_BYTES = 1.8 * 1024 * 1024; // Safe under Vercel's 4.5 MB request/response limit
+const MAX_BATCH_ROWS = 2000;
+
+async function parseJsonSafe(res) {
+  const rawText = await res.text();
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    if (res.status === 413) {
+      throw new Error(
+        "Ukuran file terlalu besar untuk server (batas payload Vercel 4,5 MB). Coba unggah file CSV yang lebih kecil."
+      );
+    }
+    if (res.status === 504) {
+      throw new Error(
+        "Waktu pemrosesan server habis (timeout). Coba kurangi jumlah baris CSV atau pilih model SVM / Logistic Regression."
+      );
+    }
+    throw new Error(`Server mengembalikan respons error (HTTP ${res.status}).`);
+  }
+}
+
+async function prepareCsvForUpload(file) {
+  if (file.size <= MAX_UPLOAD_BYTES) {
+    return { uploadBlob: file, clientTrimmed: false, trimmedRows: null };
+  }
+
+  // Read up to 6 MB chunk so very large files do not freeze the browser
+  const readLimit = Math.min(file.size, 6 * 1024 * 1024);
+  const chunkText = await file.slice(0, readLimit).text();
+
+  const encoder = new TextEncoder();
+  const records = [];
+  let inQuotes = false;
+  let start = 0;
+  let totalBytes = 0;
+
+  for (let i = 0; i < chunkText.length; i += 1) {
+    const ch = chunkText[i];
+    if (ch === '"') {
+      if (inQuotes && chunkText[i + 1] === '"') {
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && ch === "\n") {
+      const record = chunkText.slice(start, i + 1);
+      const recBytes = encoder.encode(record).length;
+      if (records.length > 0 && totalBytes + recBytes > MAX_UPLOAD_BYTES) {
+        break;
+      }
+      records.push(record);
+      totalBytes += recBytes;
+      start = i + 1;
+      if (records.length >= MAX_BATCH_ROWS + 1) {
+        break;
+      }
+    }
+  }
+
+  // Need at least header + 1 data row
+  if (records.length < 2) {
+    throw new Error(
+      "File CSV terlalu besar dan baris pertama melebihi batas 1,8 MB. Kurangi kolom atau ukuran file terlebih dahulu."
+    );
+  }
+
+  const slicedBlob = new Blob([records.join("")], {
+    type: "text/csv;charset=utf-8",
+  });
+  return {
+    uploadBlob: slicedBlob,
+    clientTrimmed: true,
+    trimmedRows: records.length - 1,
+  };
+}
+
 function escapeHtml(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;")
@@ -207,7 +284,7 @@ function initSingleAnalyzer() {
         body: JSON.stringify({ text, model_type: getSelectedModel() }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(data.detail || "Gagal memproses prediksi.");
       }
@@ -318,21 +395,32 @@ function initBatchAnalyzer() {
     }
 
     const colName = $("#csv-column-input").value.trim() || "content";
-    const formData = new FormData();
-    formData.append("file", state.selectedFile);
-    formData.append("text_column", colName);
-    formData.append("model_type", getSelectedModel());
 
     btnProcess.disabled = true;
     btnProcess.textContent = "Memproses CSV...";
     setBatchState("loading");
 
     try {
+      const { uploadBlob, clientTrimmed, trimmedRows } = await prepareCsvForUpload(
+        state.selectedFile
+      );
+      if (clientTrimmed) {
+        showToast(
+          `File besar terdeteksi: otomatis memproses ${trimmedRows.toLocaleString("id-ID")} baris pertama agar sesuai batas server.`,
+          "info"
+        );
+      }
+
+      const formData = new FormData();
+      formData.append("file", uploadBlob, state.selectedFile.name);
+      formData.append("text_column", colName);
+      formData.append("model_type", getSelectedModel());
+
       const res = await fetch("/api/predict-batch", {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(data.detail || "Gagal memproses file CSV.");
       }
@@ -472,7 +560,7 @@ function initLiveScraper() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
         throw new Error(data.detail || "Gagal mengambil ulasan dari Play Store.");
       }

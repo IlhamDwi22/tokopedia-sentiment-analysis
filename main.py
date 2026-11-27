@@ -232,15 +232,23 @@ async def predict_batch_csv(
         if extra not in out_fields:
             out_fields.append(extra)
 
-    csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=out_fields)
-    writer.writeheader()
-    for row, pred in zip(rows, predictions):
-        out_row = dict(row)
-        out_row["clean_text"] = pred["clean_text"]
-        out_row["predicted_sentiment"] = pred["sentiment"]
-        out_row["confidence"] = pred["confidence"]
-        writer.writerow(out_row)
+    def _build_csv_text(selected_fields: List[str]) -> str:
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=selected_fields, extrasaction="ignore")
+        writer.writeheader()
+        for row, pred in zip(rows, predictions):
+            out_row = dict(row)
+            out_row["clean_text"] = pred["clean_text"]
+            out_row["predicted_sentiment"] = pred["sentiment"]
+            out_row["confidence"] = pred["confidence"]
+            writer.writerow(out_row)
+        return buf.getvalue()
+
+    csv_text = _build_csv_text(out_fields)
+    # Keep response comfortably under Vercel's 4.5 MB body limit after Base64 encoding
+    if len(csv_text.encode("utf-8")) > 2_600_000:
+        compact_fields = [col_name, "clean_text", "predicted_sentiment", "confidence"]
+        csv_text = _build_csv_text(compact_fields)
 
     distribution = _compute_distribution(predictions)
     preview = [
@@ -253,7 +261,7 @@ async def predict_batch_csv(
         for p in predictions[:10]
     ]
 
-    csv_base64 = base64.b64encode(csv_buffer.getvalue().encode("utf-8")).decode("ascii")
+    csv_base64 = base64.b64encode(csv_text.encode("utf-8")).decode("ascii")
 
     return {
         "total_rows": len(rows),
