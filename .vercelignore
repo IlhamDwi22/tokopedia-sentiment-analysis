@@ -1,4 +1,5 @@
 notebooks/
+assets/
 __pycache__/
 *.pyc
 .venv/

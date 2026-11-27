@@ -2,6 +2,26 @@
 
 Aplikasi web full-stack monolith berbasis **FastAPI** dan **HTML5, CSS3, Vanilla JavaScript** (tema Neo-Brutalism) untuk klasifikasi sentimen 3 kelas (`Positif`, `Netral`, `Negatif`) pada ulasan aplikasi Google Play Store berbahasa Indonesia.
 
+## Demo Aplikasi
+
+### 1. Ulasan Tunggal & Global Model Switcher
+Pengujian teks ulasan langsung dengan pergantian model (`CNN + Bi-LSTM` vs `SVM LinearSVC`) serta panel transparan hasil preprocessing (`clean_text`).
+
+![Demo Ulasan Tunggal CNN + Bi-LSTM](assets/demo-02-single-review-bilstm.png)
+![Demo Ulasan Tunggal SVM LinearSVC](assets/demo-01-single-review-svm.png)
+
+### 2. Batch CSV Upload & Visualisasi Distribusi
+Unggah file `.csv` berukuran besar (otomatis dipangkas hingga 2.000 baris utuh di sisi browser), lengkap dengan bar proporsi sentimen, grafik Doughnut interaktif, tabel pratinjau 10 baris pertama, dan tombol unduh hasil `.csv`.
+
+![Demo Upload Batch CSV](assets/demo-03-batch-csv-upload.png)
+![Demo Hasil Batch CSV dan Tabel Pratinjau](assets/demo-04-batch-csv-results.png)
+
+### 3. Live On-Demand Play Store Scraper
+Penarikan ulasan terbaru langsung dari Google Play Store Indonesia (contoh: `com.gojek.app`, 50 ulasan terbaru), lengkap dengan grafik sebaran sentimen, kata kunci dominan, dan feed ulasan live.
+
+![Demo Live Play Store Scraper](assets/demo-05-live-scraper-input.png)
+![Demo Grafik Distribusi dan Top Keywords Scraper](assets/demo-06-live-scraper-insights.png)
+
 ## Fitur Utama
 
 1. **Global Model Switcher**: Beralih langsung di header antara 3 model terlatih:
@@ -25,6 +45,13 @@ tokopedia-sentiment-analysis/
 ├── notebooks/
 │   ├── 01_data_scraping.ipynb
 │   └── 02_model_training_and_evaluation.ipynb
+├── assets/
+│   ├── demo-01-single-review-svm.png
+│   ├── demo-02-single-review-bilstm.png
+│   ├── demo-03-batch-csv-upload.png
+│   ├── demo-04-batch-csv-results.png
+│   ├── demo-05-live-scraper-input.png
+│   └── demo-06-live-scraper-insights.png
 ├── artifacts/
 │   ├── bow_vectorizer.joblib
 │   ├── label_encoder.joblib
